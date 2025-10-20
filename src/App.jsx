@@ -1,24 +1,68 @@
-import React from "react";
+// src/App.jsx
+import React, { useEffect, useState } from "react";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import AuthPage from "./pages/AuthPage";
 import ChatLayout from "./layouts/ChatLayout";
+import { supabase } from "./supabaseClient";
+import ProfilePage from "./pages/ProfilePage";
+import FriendRequestsPage from "./pages/FriendRequestsPage";
 
 export default function App() {
-  return (
-    <div
-      className="min-h-screen flex items-center justify-center relative text-white overflow-hidden"
-      style={{
-        backgroundImage: "url('/background.jpg')",
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-        backgroundRepeat: "no-repeat",
-      }}
-    >
-      
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm"></div>
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-      
-      <div className="relative w-[95%] max-w-[1200px] h-[90vh] rounded-2xl overflow-hidden border border-white/10 backdrop-blur-2xl shadow-[0_0_40px_rgba(255,20,147,0.25)]">
-        <ChatLayout />
+  useEffect(() => {
+    // Check if a session already exists (user logged in previously)
+    const checkSession = async () => {
+      const {
+        data: { session },
+        error,
+      } = await supabase.auth.getSession();
+
+      if (session?.user) {
+        setUser(session.user);
+      } else {
+        setUser(null);
+      }
+
+      setLoading(false);
+    };
+
+    checkSession();
+
+    // Listen for auth changes (login/logout)
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session?.user) {
+        setUser(session.user);
+      } else {
+        setUser(null);
+      }
+    });
+
+    // Cleanup listener on unmount
+    return () => {
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
+  if (loading)
+    return (
+      <div className="min-h-screen flex items-center justify-center text-pink-400 text-xl font-semibold">
+        Loading...
       </div>
-    </div>
+    );
+
+  return (
+    <BrowserRouter>
+      <Routes>
+        {/* If user is not logged in, show Auth page, else go to /chat */}
+        <Route path="/" element={!user ? <AuthPage /> : <Navigate to="/chat" />} />
+
+        {/* If user is logged in, show Chat page, else redirect to login */}
+        <Route path="/chat" element={user ? <ChatLayout /> : <Navigate to="/" />} />
+        <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/requests" element={<FriendRequestsPage />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
