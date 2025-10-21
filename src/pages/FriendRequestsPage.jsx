@@ -49,7 +49,7 @@ export default function FriendRequestsPage() {
     fetchRequests();
   }, [user]);
 
-  // ✅ Accept request (UPDATED)
+  // ✅ Accept request (ENHANCED)
   const handleAccept = async (req) => {
     try {
       // 1️⃣ Update friend request status
@@ -60,31 +60,51 @@ export default function FriendRequestsPage() {
 
       if (updateError) throw updateError;
 
-      // 2️⃣ Check if chat already exists between these two users
-      const { data: existingChat, error: checkError } = await supabase
-        .from("chats")
-        .select("*")
-        .contains("participants", [user.id, req.sender_id]);
+      // 2️⃣ Get logged-in user
+      const {
+        data: { user: currentUser },
+      } = await supabase.auth.getUser();
 
-      if (checkError) throw checkError;
+     // 3️⃣ Check if chat already exists (works both ways)
+const { data: existingChat, error: chatCheckError } = await supabase
+.from("chats")
+.select("id, participants")
+.or(
+  `and(participants.cs.{${currentUser.id},${req.sender_id}}),and(participants.cs.{${req.sender_id},${currentUser.id}})`
+);
 
-      // 3️⃣ If no chat exists, create one
+if (chatCheckError) throw chatCheckError;
+      // 4️⃣ If no chat exists, create one
       if (!existingChat || existingChat.length === 0) {
-        const { error: chatError } = await supabase.from("chats").insert([
-          {
-            participants: [user.id, req.sender_id],
-            created_at: new Date(),
-          },
-        ]);
-        if (chatError) throw chatError;
+        // Only the receiver (the one accepting) creates the chat
+        if (req.sender_id !== currentUser.id) {
+          const { data: friendData } = await supabase
+            .from("users")
+            .select("name, username, profile_pic")
+            .eq("id", req.sender_id)
+            .single();
+      
+          const { error: chatError } = await supabase.from("chats").insert([
+            {
+              participants: [currentUser.id, req.sender_id],
+              friend_name: friendData?.name || "Unknown User",
+              friend_username: friendData?.username || "",
+              friend_profile_pic:
+                friendData?.profile_pic || "/assets/images/defaultUser.png",
+              created_at: new Date(),
+            },
+          ]);
+      
+          if (chatError) throw chatError;
+        }
       }
 
-      // 4️⃣ Notify user
+      // 5️⃣ Notify user
       toast.success(
         `You are now friends with ${req.sender?.name || "this user"} 🎉`
       );
 
-      // 5️⃣ Remove accepted request from list
+      // 6️⃣ Remove accepted request from list
       setReceived((prev) => prev.filter((r) => r.id !== req.id));
     } catch (err) {
       console.error("❌ Accept request failed:", err);
@@ -92,7 +112,7 @@ export default function FriendRequestsPage() {
     }
   };
 
-  // ❌ Reject request (UPDATED)
+  // ❌ Reject request
   const handleReject = async (req) => {
     try {
       const { error } = await supabase

@@ -1,24 +1,22 @@
 import React, { useState, useEffect } from "react";
 import ChatList from "../components/chatlist/ChatList";
 import Chat from "../components/chat/Chat";
-import AIChatBox from "../components/chat/AIChatBox";
 import Details from "../components/details/Details";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft } from "lucide-react";
 import useResponsiveView from "../hooks/useResponsiveView";
 import toast from "react-hot-toast";
 import { supabase } from "../supabaseClient";
-import { areFriends } from "../utils/friends";
 
 export default function ChatLayout() {
   const [selectedChat, setSelectedChat] = useState(null);
   const [isAI, setIsAI] = useState(false);
-  const [activeView, setActiveView] = useState("chatlist"); // chatlist | chat | details
+  const [activeView, setActiveView] = useState("chatlist");
   const [showDetails, setShowDetails] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const view = useResponsiveView();
 
-  // ✅ Get current logged-in user from Supabase
+  // ✅ Get current logged-in user
   useEffect(() => {
     const getUser = async () => {
       const { data, error } = await supabase.auth.getUser();
@@ -28,7 +26,7 @@ export default function ChatLayout() {
     getUser();
   }, []);
 
-  // ✅ Modified handleOpenChat — only allows chatting with accepted friends
+  // ✅ Clean fixed handleOpenChat
   const handleOpenChat = async (chatUser, ai = false) => {
     if (ai) {
       setIsAI(true);
@@ -36,26 +34,54 @@ export default function ChatLayout() {
       if (view === "mobile") setActiveView("chat");
       return;
     }
-
+  
     if (!currentUser || !chatUser?.id) {
       toast.error("Something went wrong. Please re-login.");
       return;
     }
-
+  
     try {
-      const canChat = await areFriends(currentUser.id, chatUser.id);
-
-      if (!canChat) {
-        toast.error("You can only chat with accepted friends!");
-        return;
+      // ✅ Check if an existing chat between these two users exists
+      const { data: existingChat, error: checkError } = await supabase
+        .from("chats")
+        .select("*")
+        .contains("participants", [currentUser.id])
+        .contains("participants", [chatUser.id])
+        .limit(1)
+        .single();
+  
+      if (checkError && checkError.code !== "PGRST116") throw checkError;
+  
+      let chatRecord = existingChat;
+  
+      // ✅ If no chat exists, create one now
+      if (!chatRecord) {
+        const { data: newChat, error: insertError } = await supabase
+          .from("chats")
+          .insert([
+            {
+              participants: [currentUser.id, chatUser.id],
+              friend_name: chatUser.name,
+              friend_username: chatUser.username,
+              friend_profile_pic:
+                chatUser.profile_pic || "/assets/images/defaultUser.png",
+              created_at: new Date(),
+            },
+          ])
+          .select()
+          .single();
+  
+        if (insertError) throw insertError;
+        chatRecord = newChat;
       }
-
-      setSelectedChat(chatUser);
+  
+      // ✅ Open the valid chat
+      setSelectedChat(chatRecord);
       setIsAI(false);
       setShowDetails(false);
       if (view === "mobile") setActiveView("chat");
     } catch (err) {
-      console.error(err);
+      console.error("❌ handleOpenChat error:", err);
       toast.error("Failed to open chat.");
     }
   };
@@ -84,7 +110,7 @@ export default function ChatLayout() {
       className="min-h-screen flex items-center justify-center relative text-white overflow-hidden"
       style={{
         backgroundImage:
-          "url('https://images.unsplash.com/photo-1478760329108-5c3ed9d495a0?ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&q=80&w=1374')",
+          "url('https://images.unsplash.com/photo-1478760329108-5c3ed9d495a0?ixlib=rb-4.1.0&auto=format&fit=crop&q=80&w=1374')",
         backgroundSize: "cover",
         backgroundPosition: "center",
         backgroundRepeat: "no-repeat",

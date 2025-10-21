@@ -100,11 +100,12 @@ const AuthPage = () => {
 
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: { data: { name, username } },
-      });
+      const defaultUsername = username || email.split("@")[0];
+const { error } = await supabase.auth.signUp({
+  email,
+  password,
+  options: { data: { name, username: defaultUsername } },
+});
 
       if (error) throw error;
 
