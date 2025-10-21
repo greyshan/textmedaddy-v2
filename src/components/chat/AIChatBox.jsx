@@ -1,54 +1,96 @@
-import React, { useState, useRef, useEffect } from "react";
-import ChatMessages from "./ChatMessages";
-import ChatInput from "./ChatInput";
+// src/components/chat/AIChatBox.jsx
+import React, { useState } from "react";
+import { getAIResponse } from "../../utils/aiModels";
+import { FiSend } from "react-icons/fi";
 
 export default function AIChatBox() {
   const [messages, setMessages] = useState([
-    { id: 1, text: "Hey there! 🤖 I'm MeowAI, your assistant.", isUser: false },
+    { sender: "bot", text: "Hey 👋! I can use Gemini, OpenAI, LLaMA, or DeepSeek. Pick a model below and start chatting!" },
   ]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [model, setModel] = useState("gemini"); // default model
 
-  const messagesEndRef = useRef(null);
+  const handleSend = async (e) => {
+    e.preventDefault();
+    if (!input.trim()) return;
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    const userMsg = { sender: "user", text: input };
+    setMessages((prev) => [...prev, userMsg]);
+    setInput("");
+    setLoading(true);
 
-  const handleSend = (text) => {
-    if (!text.trim()) return;
-    const newMsg = { id: Date.now(), text, isUser: true };
-    setMessages((prev) => [...prev, newMsg]);
-
-    
-    setTimeout(() => {
-      const aiReply = {
-        id: Date.now() + 1,
-        text: "Meow! 🐾 I'm thinking about your question...",
-        isUser: false,
-      };
-      setMessages((prev) => [...prev, aiReply]);
-    }, 800);
+    try {
+      const aiReply = await getAIResponse(model, userMsg.text);
+      setMessages((prev) => [...prev, { sender: "bot", text: aiReply }]);
+    } catch (err) {
+      console.error("AI error:", err);
+      setMessages((prev) => [
+        ...prev,
+        { sender: "bot", text: "⚠️ Oops, something went wrong. Try again." },
+      ]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="flex flex-col h-full bg-white/10 backdrop-blur-lg border-x border-white/10">
-      {/* Header */}
-      <div className="flex items-center gap-3 p-4 border-b border-white/10 bg-white/10 backdrop-blur-lg">
-        <img
-          src="/assets/images/bot.png"
-          alt="AI Bot"
-          className="w-10 h-10 rounded-full border border-white/20 shadow-[0_0_12px_#3b82f6]"
-        />
-        <div>
-          <div className="text-sm font-semibold">MeowAI Assistant</div>
-          <div className="text-xs text-white/60">Always here to chat 💬</div>
-        </div>
+    <div className="flex flex-col h-full bg-white/10 backdrop-blur-lg text-white p-4">
+      {/* 💬 Chat Window */}
+      <div className="flex-1 overflow-y-auto space-y-4 mb-3 custom-scrollbar">
+        {messages.map((msg, i) => (
+          <div
+            key={i}
+            className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"}`}
+          >
+            <div
+              className={`max-w-[75%] p-3 rounded-2xl ${
+                msg.sender === "user"
+                  ? "bg-pink-600/80 text-white"
+                  : "bg-white/20 text-white"
+              }`}
+            >
+              {msg.text}
+            </div>
+          </div>
+        ))}
+        {loading && (
+          <p className="text-center text-gray-400">🤖 {model} is thinking...</p>
+        )}
       </div>
 
-      {/* Messages */}
-      <ChatMessages messages={messages} messagesEndRef={messagesEndRef} />
+      {/* ⚙️ Model Selector */}
+      <div className="flex items-center justify-between mb-2">
+        <label className="text-sm text-gray-300">AI Model:</label>
+        <select
+          value={model}
+          onChange={(e) => setModel(e.target.value)}
+          className="bg-white/10 border border-white/20 rounded-lg p-1 text-sm outline-none"
+        >
+          <option value="gemini">🌟 Gemini</option>
+          <option value="openai">🧠 GPT-4 (OpenAI)</option>
+          <option value="llama">🐪 LLaMA 3</option>
+          <option value="deepseek">🕵️ DeepSeek</option>
+        </select>
+      </div>
 
-      {/* Input */}
-      <ChatInput onSend={handleSend} />
+      {/* ✍️ Input Box */}
+      <form onSubmit={handleSend} className="flex items-center gap-2">
+        <input
+          type="text"
+          className="flex-1 bg-white/10 border border-white/20 rounded-lg p-2 outline-none text-white placeholder-gray-400"
+          placeholder={`Ask ${model} something...`}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+        />
+        <button
+          type="submit"
+          disabled={loading}
+          className="bg-pink-600 hover:bg-pink-700 p-3 rounded-full transition-all"
+        >
+          <FiSend />
+        </button>
+      </form>
     </div>
   );
 }

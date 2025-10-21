@@ -6,6 +6,9 @@ import ChatLayout from "./layouts/ChatLayout";
 import { supabase } from "./supabaseClient";
 import ProfilePage from "./pages/ProfilePage";
 import FriendRequestsPage from "./pages/FriendRequestsPage";
+import ResetPasswordPage from "./pages/ResetPasswordPage";
+
+
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -62,6 +65,7 @@ export default function App() {
         <Route path="/chat" element={user ? <ChatLayout /> : <Navigate to="/" />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/requests" element={<FriendRequestsPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
       </Routes>
     </BrowserRouter>
   );

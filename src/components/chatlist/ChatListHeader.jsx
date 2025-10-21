@@ -9,17 +9,31 @@ import { supabase } from "../../supabaseClient";
 export default function ChatListHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuStyle, setMenuStyle] = useState({ top: 0, left: 0, visibility: "hidden" });
+  const [user, setUser] = useState(null);
   const buttonRef = useRef(null);
   const menuRef = useRef(null);
   const navigate = useNavigate();
 
-  // ✅ logout handler
+  // ✅ Fetch current logged-in user
+  useEffect(() => {
+    const getUser = async () => {
+      const { data, error } = await supabase.auth.getUser();
+      if (error) {
+        console.error("Failed to fetch user:", error.message);
+        return;
+      }
+      setUser(data.user);
+    };
+    getUser();
+  }, []);
+
+  // ✅ Logout
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    navigate("/"); // redirect to login page
+    navigate("/");
   };
 
-  // ✅ calculate menu position
+  // ✅ Calculate menu position
   const positionMenu = useCallback(() => {
     const btn = buttonRef.current;
     const menu = menuRef.current;
@@ -28,7 +42,6 @@ export default function ChatListHeader() {
     const rect = btn.getBoundingClientRect();
     const left = Math.max(8, Math.min(rect.right - menu.offsetWidth, window.innerWidth - menu.offsetWidth - 8));
     const top = rect.bottom + 10;
-
     setMenuStyle({ top, left, visibility: "visible" });
   }, []);
 
@@ -43,7 +56,7 @@ export default function ChatListHeader() {
     return () => window.removeEventListener("resize", handleResize);
   }, [menuOpen, positionMenu]);
 
-  // close menu on outside click
+  // ✅ Close menu when clicked outside
   useEffect(() => {
     if (!menuOpen) return;
     const onDocClick = (e) => {
@@ -83,7 +96,7 @@ export default function ChatListHeader() {
             <li
               onClick={() => {
                 setMenuOpen(false);
-                navigate("/profile"); // go to profile page
+                navigate("/profile");
               }}
               className="flex items-center gap-2 px-4 py-2 hover:bg-pink-600/20 hover:scale-[1.02] cursor-pointer transition-all duration-200"
             >
@@ -110,13 +123,20 @@ export default function ChatListHeader() {
       <div className="relative flex items-center justify-between p-4 border-b border-white/10 bg-white/5 backdrop-blur-lg">
         <div className="flex items-center gap-3">
           <img
-            src="/assets/images/defaultUser.png"
+            src={
+              user?.user_metadata?.profile_pic ||
+              "/assets/images/defaultUser.png"
+            }
             alt="User"
             className="w-10 h-10 rounded-full border border-white/20 transition-all duration-300 hover:scale-110 hover:shadow-[0_0_12px_#3b82f6]"
           />
           <div>
-            <div className="text-sm font-semibold">Aiden Grey</div>
-            <div className="text-xs text-white/60">Online</div>
+            <div className="text-sm font-semibold">
+              {user?.user_metadata?.name || "Anonymous"}
+            </div>
+            <div className="text-xs text-white/60">
+              {user ? "Online" : "Offline"}
+            </div>
           </div>
         </div>
 
