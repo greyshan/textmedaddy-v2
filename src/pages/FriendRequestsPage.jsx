@@ -10,6 +10,7 @@ export default function FriendRequestsPage() {
   const [sent, setSent] = useState([]);
   const [received, setReceived] = useState([]);
 
+  // ✅ Get logged-in user
   useEffect(() => {
     const getUser = async () => {
       const {
@@ -20,19 +21,24 @@ export default function FriendRequestsPage() {
     getUser();
   }, []);
 
+  // ✅ Fetch friend requests
   useEffect(() => {
     if (!user) return;
 
     const fetchRequests = async () => {
       const { data: sentData } = await supabase
         .from("friend_requests")
-        .select("id, receiver_id, status, receiver:receiver_id(name, username, profile_pic)")
+        .select(
+          "id, receiver_id, status, receiver:receiver_id(name, username, profile_pic)"
+        )
         .eq("sender_id", user.id)
         .order("created_at", { ascending: false });
 
       const { data: receivedData } = await supabase
         .from("friend_requests")
-        .select("id, sender_id, status, sender:sender_id(name, username, profile_pic)")
+        .select(
+          "id, sender_id, status, sender:sender_id(name, username, profile_pic)"
+        )
         .eq("receiver_id", user.id)
         .order("created_at", { ascending: false });
 
@@ -43,29 +49,64 @@ export default function FriendRequestsPage() {
     fetchRequests();
   }, [user]);
 
-  // ✅ Accept request
+  // ✅ Accept request (UPDATED)
   const handleAccept = async (req) => {
-    const { error } = await supabase
-      .from("friend_requests")
-      .update({ status: "accepted" })
-      .eq("id", req.id);
+    try {
+      // 1️⃣ Update friend request status
+      const { error: updateError } = await supabase
+        .from("friend_requests")
+        .update({ status: "accepted" })
+        .eq("id", req.id);
 
-    if (!error) {
-      toast.success(`You are now friends with ${req.sender?.name || "this user"} 🎉`);
+      if (updateError) throw updateError;
+
+      // 2️⃣ Check if chat already exists between these two users
+      const { data: existingChat, error: checkError } = await supabase
+        .from("chats")
+        .select("*")
+        .contains("participants", [user.id, req.sender_id]);
+
+      if (checkError) throw checkError;
+
+      // 3️⃣ If no chat exists, create one
+      if (!existingChat || existingChat.length === 0) {
+        const { error: chatError } = await supabase.from("chats").insert([
+          {
+            participants: [user.id, req.sender_id],
+            created_at: new Date(),
+          },
+        ]);
+        if (chatError) throw chatError;
+      }
+
+      // 4️⃣ Notify user
+      toast.success(
+        `You are now friends with ${req.sender?.name || "this user"} 🎉`
+      );
+
+      // 5️⃣ Remove accepted request from list
       setReceived((prev) => prev.filter((r) => r.id !== req.id));
+    } catch (err) {
+      console.error("❌ Accept request failed:", err);
+      toast.error("Failed to accept request");
     }
   };
 
-  // ❌ Reject request
+  // ❌ Reject request (UPDATED)
   const handleReject = async (req) => {
-    const { error } = await supabase
-      .from("friend_requests")
-      .update({ status: "rejected" })
-      .eq("id", req.id);
+    try {
+      const { error } = await supabase
+        .from("friend_requests")
+        .update({ status: "rejected" })
+        .eq("id", req.id);
 
-    if (!error) {
+      if (error) throw error;
+
       toast(`You rejected ${req.sender?.name || "this user"} ❌`);
       setReceived((prev) => prev.filter((r) => r.id !== req.id));
+    } catch (err) {
+      console.error("❌ Reject request failed:", err);
+      toast.error("Failed to reject request");
     }
   };
 
@@ -105,13 +146,18 @@ export default function FriendRequestsPage() {
               >
                 <div className="flex items-center gap-3">
                   <img
-                    src={req.sender?.profile_pic || "/assets/images/defaultUser.png"}
+                    src={
+                      req.sender?.profile_pic ||
+                      "/assets/images/defaultUser.png"
+                    }
                     alt={req.sender?.name}
                     className="w-10 h-10 rounded-full border border-white/20"
                   />
                   <div>
                     <p className="font-semibold">{req.sender?.name}</p>
-                    <p className="text-xs text-white/60">@{req.sender?.username}</p>
+                    <p className="text-xs text-white/60">
+                      @{req.sender?.username}
+                    </p>
                   </div>
                 </div>
                 <div className="flex gap-2">
@@ -137,7 +183,9 @@ export default function FriendRequestsPage() {
         <div>
           <h3 className="text-lg font-semibold mb-3">📨 Sent</h3>
           {sent.length === 0 ? (
-            <p className="text-white/60 text-sm">You haven't sent any requests</p>
+            <p className="text-white/60 text-sm">
+              You haven't sent any requests
+            </p>
           ) : (
             sent.map((req) => (
               <div
@@ -146,13 +194,18 @@ export default function FriendRequestsPage() {
               >
                 <div className="flex items-center gap-3">
                   <img
-                    src={req.receiver?.profile_pic || "/assets/images/defaultUser.png"}
+                    src={
+                      req.receiver?.profile_pic ||
+                      "/assets/images/defaultUser.png"
+                    }
                     alt={req.receiver?.name}
                     className="w-10 h-10 rounded-full border border-white/20"
                   />
                   <div>
                     <p className="font-semibold">{req.receiver?.name}</p>
-                    <p className="text-xs text-white/60">@{req.receiver?.username}</p>
+                    <p className="text-xs text-white/60">
+                      @{req.receiver?.username}
+                    </p>
                   </div>
                 </div>
                 <span
