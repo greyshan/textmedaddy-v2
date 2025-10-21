@@ -117,7 +117,7 @@ export default function ChatLayout() {
       className="min-h-screen flex items-center justify-center relative text-white overflow-hidden"
       style={{
         backgroundImage:
-          "url('https://images.unsplash.com/photo-1478760329108-5c3ed9d495a0?ixlib=rb-4.1.0&auto=format&fit=crop&q=80&w=1374')",
+          "url('https://images.unsplash.com/photo-1688494930045-328d0f95efe9?ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8bW9kZXJuJTIwYmFja2dyb3VuZHxlbnwwfHwwfHx8MA%3D%3D&auto=format&fit=crop&q=60&w=500')",
         backgroundSize: "cover",
         backgroundPosition: "center",
         backgroundRepeat: "no-repeat",
