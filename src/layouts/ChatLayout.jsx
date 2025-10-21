@@ -76,7 +76,14 @@ export default function ChatLayout() {
       }
   
       // ✅ Open the valid chat
-      setSelectedChat(chatRecord);
+     // ✅ Open the valid chat (include friend data)
+        setSelectedChat({
+         id: chatRecord.id,
+         name: chatUser.name,
+         username: chatUser.username,
+         profile_pic: chatUser.profile_pic || "/assets/images/defaultUser.png",
+         status: "Online",
+       });
       setIsAI(false);
       setShowDetails(false);
       if (view === "mobile") setActiveView("chat");

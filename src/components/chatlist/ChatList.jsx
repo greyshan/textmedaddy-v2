@@ -3,9 +3,9 @@ import React, { useEffect, useState } from "react";
 import { supabase } from "../../supabaseClient";
 import ChatListHeader from "./ChatListHeader";
 import ChatSearch from "./ChatSearch";
-import ChatItem from "./ChatItem";
+// import ChatItem from "./ChatItem";
 import useFriendshipRealtime from "../../hooks/useFriendshipRealtime";
-import { FiUserPlus, FiUserCheck } from "react-icons/fi";
+import { FiUserPlus, FiUserCheck, FiX } from "react-icons/fi"; // 👈 added X for close button
 import toast from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
 
@@ -16,6 +16,7 @@ export default function ChatList({ onOpenChat, onOpenAI }) {
   const [loading, setLoading] = useState(false);
   const [friendRequests, setFriendRequests] = useState([]);
   const [user, setUser] = useState(null);
+  const [zoomedImage, setZoomedImage] = useState(null); // 👈 added for zoom modal
   const navigate = useNavigate();
 
   // ✅ Get logged-in user
@@ -34,7 +35,9 @@ export default function ChatList({ onOpenChat, onOpenAI }) {
     if (!user) return;
     const { data, error } = await supabase
       .from("chats")
-      .select("id, participants, friend_name, friend_username, friend_profile_pic, last_message, last_message_time")
+      .select(
+        "id, participants, friend_name, friend_username, friend_profile_pic, last_message, last_message_time"
+      )
       .contains("participants", [user.id])
       .order("last_message_time", { ascending: false });
 
@@ -46,20 +49,47 @@ export default function ChatList({ onOpenChat, onOpenAI }) {
     setChats(data || []);
   };
 
-  // ✅ Fetch sent friend requests
+  // ✅ Fetch friend requests (Moved OUTSIDE useEffect)
   const fetchFriendRequests = async () => {
     if (!user) return;
-    const { data, error } = await supabase
-      .from("friend_requests")
-      .select("receiver_id, status")
-      .eq("sender_id", user.id);
-    if (!error && data) setFriendRequests(data);
+
+    try {
+      const { data: sentData, error: sentError } = await supabase
+        .from("friend_requests")
+        .select(
+          "id, receiver_id, status, receiver:receiver_id(name, username, profile_pic)"
+        )
+        .eq("sender_id", user.id)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false });
+
+      const { data: receivedData, error: receivedError } = await supabase
+        .from("friend_requests")
+        .select(
+          "id, sender_id, status, sender:sender_id(name, username, profile_pic)"
+        )
+        .eq("receiver_id", user.id)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false });
+
+      if (sentError || receivedError) {
+        console.error(
+          "Error fetching friend requests:",
+          sentError || receivedError
+        );
+        return;
+      }
+
+      setFriendRequests([...(sentData || []), ...(receivedData || [])]);
+    } catch (err) {
+      console.error("❌ Fetch error:", err);
+    }
   };
 
-  // ✅ Realtime listener — auto refresh
-  useFriendshipRealtime(user?.id, () => {
-    fetchChats();
-    fetchFriendRequests();
+  // ✅ Realtime listener — auto refresh when requests or chats change
+  useFriendshipRealtime(user?.id, async () => {
+    await fetchChats();
+    await fetchFriendRequests();
   });
 
   // ✅ Initial load
@@ -103,7 +133,9 @@ export default function ChatList({ onOpenChat, onOpenAI }) {
       const { data: existingRequests } = await supabase
         .from("friend_requests")
         .select("id")
-        .or(`and(sender_id.eq.${user.id},receiver_id.eq.${receiver_id}),and(sender_id.eq.${receiver_id},receiver_id.eq.${user.id})`);
+        .or(
+          `and(sender_id.eq.${user.id},receiver_id.eq.${receiver_id}),and(sender_id.eq.${receiver_id},receiver_id.eq.${user.id})`
+        );
 
       if (existingRequests?.length > 0) {
         toast("Request already exists ✅");
@@ -120,18 +152,21 @@ export default function ChatList({ onOpenChat, onOpenAI }) {
 
       if (error) throw error;
       toast.success("Friend request sent 💌");
-      setFriendRequests((prev) => [...prev, { receiver_id, status: "pending" }]);
+
+      setFriendRequests((prev) => [
+        ...prev,
+        { receiver_id, status: "pending" },
+      ]);
+      await fetchFriendRequests();
     } catch (err) {
       console.error("Unexpected error:", err);
       toast.error("Failed to send request 😕");
     }
   };
 
-  // ✅ Helper
   const isRequestSent = (userId) =>
     friendRequests.some((r) => r.receiver_id === userId);
 
-  // ✅ Open chat safely
   const handleOpenChat = async (chat) => {
     if (!chat || !chat.id) return;
     const friendData = {
@@ -166,7 +201,13 @@ export default function ChatList({ onOpenChat, onOpenAI }) {
                   <img
                     src={u.profile_pic || "/assets/images/defaultUser.png"}
                     alt={u.name}
-                    className="w-10 h-10 rounded-full border border-white/20"
+                    className="w-10 h-10 rounded-full border border-white/20 cursor-pointer hover:scale-105 transition-transform"
+                    onClick={(e) => {
+                      e.stopPropagation(); // Prevent chat open
+                      setZoomedImage(
+                        u.profile_pic || "/assets/images/defaultUser.png"
+                      );
+                    }}
                   />
                   <div>
                     <p className="font-semibold">{u.name}</p>
@@ -201,9 +242,18 @@ export default function ChatList({ onOpenChat, onOpenAI }) {
             >
               <div className="flex items-center gap-3">
                 <img
-                  src={chat.friend_profile_pic || "/assets/images/defaultUser.png"}
+                  src={
+                    chat.friend_profile_pic || "/assets/images/defaultUser.png"
+                  }
                   alt={chat.friend_name}
-                  className="w-10 h-10 rounded-full border border-white/20"
+                  className="w-10 h-10 rounded-full border border-white/20 cursor-pointer hover:scale-110 transition-transform"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setZoomedImage(
+                      chat.friend_profile_pic ||
+                        "/assets/images/defaultUser.png"
+                    );
+                  }}
                 />
                 <div>
                   <p className="font-semibold">{chat.friend_name}</p>
@@ -247,6 +297,41 @@ export default function ChatList({ onOpenChat, onOpenAI }) {
           <FiUserCheck size={22} />
         </button>
       </div>
+
+    {/* 🖼️ Zoom Modal (Responsive & Centered) */}
+{/* 🖼️ Zoom Modal (20vw width, proportional height) */}
+{zoomedImage && (
+  <div
+    className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm"
+    onClick={() => setZoomedImage(null)}
+  >
+    <div
+      className="relative flex items-center justify-center"
+      onClick={(e) => e.stopPropagation()} // prevent closing when clicking image
+    >
+      <img
+        src={zoomedImage}
+        alt="Profile Preview"
+        className="w-[20vw] max-w-[300px] h-auto rounded-2xl shadow-2xl object-contain transition-transform duration-300 ease-in-out transform hover:scale-105 border border-white/20"
+      />
+
+      <button
+        onClick={() => setZoomedImage(null)}
+        className="absolute top-2 right-2 bg-black/70 hover:bg-black/90 text-white p-2 rounded-full transition-transform hover:scale-110"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          className="w-5 h-5"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+  </div>
+)}
     </div>
   );
 }

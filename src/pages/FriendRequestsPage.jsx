@@ -3,6 +3,7 @@ import { supabase } from "../supabaseClient";
 import { FiArrowLeft, FiCheck, FiX } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
+import useFriendshipRealtime from "../hooks/useFriendshipRealtime"; // ✅ Added realtime hook
 
 export default function FriendRequestsPage() {
   const navigate = useNavigate();
@@ -21,33 +22,52 @@ export default function FriendRequestsPage() {
     getUser();
   }, []);
 
-  // ✅ Fetch friend requests
-  useEffect(() => {
+  // ✅ Fetch friend requests (Moved OUTSIDE useEffect so it can be reused)
+  const fetchRequests = async () => {
     if (!user) return;
 
-    const fetchRequests = async () => {
-      const { data: sentData } = await supabase
+    try {
+      // ✅ Fetch only "pending" sent requests
+      const { data: sentData, error: sentError } = await supabase
         .from("friend_requests")
         .select(
           "id, receiver_id, status, receiver:receiver_id(name, username, profile_pic)"
         )
         .eq("sender_id", user.id)
+        .eq("status", "pending") // 👈 only pending
         .order("created_at", { ascending: false });
 
-      const { data: receivedData } = await supabase
+      // ✅ Fetch only "pending" received requests
+      const { data: receivedData, error: receivedError } = await supabase
         .from("friend_requests")
         .select(
           "id, sender_id, status, sender:sender_id(name, username, profile_pic)"
         )
         .eq("receiver_id", user.id)
+        .eq("status", "pending") // 👈 only pending
         .order("created_at", { ascending: false });
+
+      if (sentError || receivedError) {
+        console.error("Error fetching friend requests:", sentError || receivedError);
+        return;
+      }
 
       setSent(sentData || []);
       setReceived(receivedData || []);
-    };
+    } catch (err) {
+      console.error("❌ Fetch error:", err);
+    }
+  };
 
-    fetchRequests();
+  // ✅ Run once when user is loaded
+  useEffect(() => {
+    if (user) fetchRequests();
   }, [user]);
+
+  // ✅ Realtime updates (auto-refresh when other user accepts/rejects)
+  useFriendshipRealtime(user?.id, () => {
+    fetchRequests(); // 👈 instantly syncs UI
+  });
 
   // ✅ Accept request (ENHANCED)
   const handleAccept = async (req) => {
@@ -65,25 +85,25 @@ export default function FriendRequestsPage() {
         data: { user: currentUser },
       } = await supabase.auth.getUser();
 
-     // 3️⃣ Check if chat already exists (works both ways)
-const { data: existingChat, error: chatCheckError } = await supabase
-.from("chats")
-.select("id, participants")
-.or(
-  `and(participants.cs.{${currentUser.id},${req.sender_id}}),and(participants.cs.{${req.sender_id},${currentUser.id}})`
-);
+      // 3️⃣ Check if chat already exists (works both ways)
+      const { data: existingChat, error: chatCheckError } = await supabase
+        .from("chats")
+        .select("id, participants")
+        .or(
+          `and(participants.cs.{${currentUser.id},${req.sender_id}}),and(participants.cs.{${req.sender_id},${currentUser.id}})`
+        );
 
-if (chatCheckError) throw chatCheckError;
+      if (chatCheckError) throw chatCheckError;
+
       // 4️⃣ If no chat exists, create one
       if (!existingChat || existingChat.length === 0) {
-        // Only the receiver (the one accepting) creates the chat
         if (req.sender_id !== currentUser.id) {
           const { data: friendData } = await supabase
             .from("users")
             .select("name, username, profile_pic")
             .eq("id", req.sender_id)
             .single();
-      
+
           const { error: chatError } = await supabase.from("chats").insert([
             {
               participants: [currentUser.id, req.sender_id],
@@ -94,7 +114,7 @@ if (chatCheckError) throw chatCheckError;
               created_at: new Date(),
             },
           ]);
-      
+
           if (chatError) throw chatError;
         }
       }
@@ -104,15 +124,16 @@ if (chatCheckError) throw chatCheckError;
         `You are now friends with ${req.sender?.name || "this user"} 🎉`
       );
 
-      // 6️⃣ Remove accepted request from list
-      setReceived((prev) => prev.filter((r) => r.id !== req.id));
+      // 6️⃣ Refresh to remove accepted request instantly
+      await fetchRequests();
+
     } catch (err) {
       console.error("❌ Accept request failed:", err);
       toast.error("Failed to accept request");
     }
   };
 
-  // ❌ Reject request
+  // ❌ Reject request (ENHANCED)
   const handleReject = async (req) => {
     try {
       const { error } = await supabase
@@ -123,7 +144,10 @@ if (chatCheckError) throw chatCheckError;
       if (error) throw error;
 
       toast(`You rejected ${req.sender?.name || "this user"} ❌`);
-      setReceived((prev) => prev.filter((r) => r.id !== req.id));
+
+      // ✅ Refresh instantly
+      await fetchRequests();
+
     } catch (err) {
       console.error("❌ Reject request failed:", err);
       toast.error("Failed to reject request");

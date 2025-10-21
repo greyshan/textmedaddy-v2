@@ -43,9 +43,13 @@ export async function areFriends(userId1, userId2) {
     .from("friend_requests")
     .select("*")
     .or(
-      `and(sender_id.eq.${userId1},receiver_id.eq.${userId2},status.eq.accepted),
-       and(sender_id.eq.${userId2},receiver_id.eq.${userId1},status.eq.accepted)`
+      `and(sender_id.eq.${userId1},receiver_id.eq.${userId2},status.eq.accepted),and(sender_id.eq.${userId2},receiver_id.eq.${userId1},status.eq.accepted)`
     );
-  if (error) throw error;
-  return data.length > 0;
+
+  if (error) {
+    console.error("areFriends() error:", error);
+    return false;
+  }
+
+  return data && data.length > 0;
 }
